@@ -1,82 +1,62 @@
-import { format } from 'date-fns'
-import type { ActivityEntry } from '../lib/types'
+import { format, isToday } from 'date-fns'
+import { asNumber, type ActivityEntry } from '../lib/types'
+import { agentTheme, slugTheme } from '../lib/agents'
 
 interface Props {
   entries: ActivityEntry[]
 }
 
-const AGENT_COLORS: Record<string, string> = {
-  oscar: 'text-purple-400',
-  opus: 'text-purple-400',
-  orchestrator: 'text-accent',
-  sheldon: 'text-accent',
-  blake: 'text-warning',
-  codex: 'text-blue-400',
-  qa: 'text-success',
-  sonnet: 'text-pink-400',
-  haiku: 'text-teal-400',
-}
-
-function agentColor(name: string): string {
-  const key = name.toLowerCase()
-  for (const [prefix, color] of Object.entries(AGENT_COLORS)) {
-    if (key.includes(prefix)) return color
-  }
-  return 'text-muted'
-}
-
-const SLUG_COLORS = [
-  'bg-accent/20 text-accent',
-  'bg-pink-400/20 text-pink-400',
-  'bg-teal-400/20 text-teal-400',
-  'bg-orange-400/20 text-orange-400',
-  'bg-blue-400/20 text-blue-400',
-]
-
-const slugColorCache = new Map<string, string>()
-let slugColorIndex = 0
-
-function slugColor(slug: string): string {
-  if (!slugColorCache.has(slug)) {
-    slugColorCache.set(slug, SLUG_COLORS[slugColorIndex % SLUG_COLORS.length])
-    slugColorIndex++
-  }
-  return slugColorCache.get(slug)!
+function timestamp(iso: string): string {
+  const d = new Date(iso)
+  return isToday(d) ? format(d, 'HH:mm:ss') : format(d, 'MMM d HH:mm')
 }
 
 export function LiveFeed({ entries }: Props) {
   if (entries.length === 0) {
     return (
-      <div className="text-sm text-muted py-8 text-center">
-        Waiting for activity...
-      </div>
+      <div className="py-12 text-center text-sm text-muted">Waiting for activity…</div>
     )
   }
 
   return (
-    <div className="flex flex-col divide-y divide-border/50">
-      {entries.map((entry, i) => (
-        <div
-          key={entry.id}
-          className={`flex items-start gap-3 py-2.5 px-1 ${i === 0 ? 'animate-slide-in' : ''}`}
-        >
-          <span className="text-[10px] text-muted/60 whitespace-nowrap mt-0.5 font-mono flex-shrink-0">
-            {format(new Date(entry.created_at), 'HH:mm:ss')}
-          </span>
-
-          <span
-            className={`text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${slugColor(entry.app_slug)}`}
+    <ul className="flex flex-col">
+      {entries.map((entry, i) => {
+        const theme = agentTheme(entry.agent_name)
+        const cost = asNumber(entry.cost_usd)
+        return (
+          <li
+            key={entry.id}
+            className={`flex items-start gap-3 border-b border-border/50 px-4 py-2.5 last:border-b-0 transition-colors hover:bg-surface-2/40 ${
+              i === 0 ? 'animate-slide-in' : ''
+            }`}
           >
-            {entry.app_slug}
-          </span>
-
-          <span className={`text-[11px] font-semibold flex-shrink-0 ${agentColor(entry.agent_name)}`}>
-            {entry.agent_name}
-          </span>
-
-          <p className="text-[11px] text-muted leading-tight flex-1 min-w-0">{entry.action}</p>
-        </div>
-      ))}
-    </div>
+            <span className="mt-0.5 flex-shrink-0 font-mono text-[10px] tabular-nums text-zinc-600">
+              {timestamp(entry.created_at)}
+            </span>
+            <span
+              className={`flex-shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-medium ${slugTheme(
+                entry.app_slug,
+              )}`}
+            >
+              {entry.app_slug}
+            </span>
+            <span className="flex flex-shrink-0 items-center gap-1.5">
+              <span className={`h-1.5 w-1.5 rounded-full ${theme.dot}`} />
+              <span className={`text-[11px] font-bold ${theme.text}`}>
+                {entry.agent_name}
+              </span>
+            </span>
+            <p className="min-w-0 flex-1 text-[12px] leading-snug text-zinc-300">
+              {entry.action}
+            </p>
+            {cost > 0 && (
+              <span className="flex-shrink-0 font-mono text-[10px] tabular-nums text-zinc-500">
+                ${cost.toFixed(2)}
+              </span>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }

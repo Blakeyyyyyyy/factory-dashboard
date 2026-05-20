@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
-import type { Campaign, ActivityEntry, RealtimeStatus } from './lib/types'
+import { asNumber, type Campaign, type ActivityEntry, type RealtimeStatus } from './lib/types'
 import { TopBar } from './components/TopBar'
 import { BlakeBanner } from './components/BlakeBanner'
 import { CampaignCard } from './components/CampaignCard'
 import { AgentPulse } from './components/AgentPulse'
 import { LiveFeed } from './components/LiveFeed'
+import { SectionHeader } from './components/SectionHeader'
 
 const FEED_LIMIT = 50
 const ACTIVITY_PER_CAMPAIGN = 3
@@ -61,7 +62,7 @@ export default function App() {
         { event: '*', schema: 'public', table: 'campaigns' },
         () => {
           fetchCampaigns()
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -69,10 +70,10 @@ export default function App() {
         (payload) => {
           const newEntry = payload.new as ActivityEntry
           setActivityLog((prev) => {
-            const updated = [newEntry, ...prev]
-            return updated.slice(0, FEED_LIMIT)
+            if (prev.some((e) => e.id === newEntry.id)) return prev
+            return [newEntry, ...prev].slice(0, FEED_LIMIT)
           })
-        }
+        },
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
@@ -94,10 +95,28 @@ export default function App() {
   }, [])
 
   function getRecentActivity(slug: string): ActivityEntry[] {
-    return activityLog.filter((e) => e.app_slug === slug).slice(0, ACTIVITY_PER_CAMPAIGN)
+    return activityLog
+      .filter((e) => e.app_slug === slug)
+      .slice(0, ACTIVITY_PER_CAMPAIGN)
   }
 
-  const activeCampaigns = campaigns.filter((c) => c.status !== 'done' || c.stage >= 9)
+  const { activeCampaigns, shippedCampaigns } = useMemo(() => {
+    const active: Campaign[] = []
+    const shipped: Campaign[] = []
+    for (const c of campaigns) {
+      if (c.stage >= 10 || c.status === 'done') shipped.push(c)
+      else active.push(c)
+    }
+    return { activeCampaigns: active, shippedCampaigns: shipped }
+  }, [campaigns])
+
+  const todaySpend = useMemo(() => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    return activityLog
+      .filter((e) => new Date(e.created_at) >= start)
+      .reduce((sum, e) => sum + asNumber(e.cost_usd), 0)
+  }, [activityLog])
 
   return (
     <div className="min-h-screen bg-bg">
@@ -107,34 +126,35 @@ export default function App() {
         errorMessage={fetchError ?? undefined}
       />
 
-      <div className="pt-12">
+      <div className="pt-14">
         <BlakeBanner campaigns={campaigns} />
 
-        <main className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-8">
+        <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 sm:px-6">
+          {/* Active Builds */}
           <section>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-sm font-semibold text-text uppercase tracking-wider">
-                Active Builds
-              </h2>
-              {!loading && (
-                <span className="text-xs font-medium bg-surface-2 text-muted px-2 py-0.5 rounded-full">
-                  {activeCampaigns.length}
+            <SectionHeader title="Active Builds" count={loading ? undefined : activeCampaigns.length}>
+              {!loading && todaySpend > 0 && (
+                <span className="rounded-full border border-border bg-surface-2/60 px-2.5 py-0.5 text-[11px] font-medium text-muted">
+                  ${todaySpend.toFixed(2)} today
                 </span>
               )}
-            </div>
+            </SectionHeader>
 
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {[1, 2].map((i) => (
-                  <div key={i} className="bg-surface rounded-lg border border-border h-64 animate-pulse" />
+                  <div
+                    key={i}
+                    className="h-80 animate-pulse rounded-xl border border-border bg-surface"
+                  />
                 ))}
               </div>
             ) : activeCampaigns.length === 0 ? (
-              <div className="bg-surface border border-border rounded-lg p-8 text-center text-sm text-muted">
-                No active campaigns. Start a new build to see it here.
+              <div className="rounded-xl border border-dashed border-border bg-surface p-10 text-center text-sm text-muted">
+                No active builds. Every app has shipped.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {activeCampaigns.map((campaign) => (
                   <CampaignCard
                     key={campaign.id}
@@ -144,37 +164,33 @@ export default function App() {
                 ))}
               </div>
             )}
-
-            {!loading && campaigns.filter((c) => c.status === 'done' && c.stage < 9).length > 0 && (
-              <div className="mt-4">
-                <h3 className="text-xs font-medium text-muted uppercase tracking-wider mb-3">
-                  Completed
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {campaigns
-                    .filter((c) => c.status === 'done' && c.stage < 9)
-                    .map((campaign) => (
-                      <CampaignCard
-                        key={campaign.id}
-                        campaign={campaign}
-                        recentActivity={getRecentActivity(campaign.slug)}
-                      />
-                    ))}
-                </div>
-              </div>
-            )}
           </section>
 
+          {/* Shipped */}
+          {!loading && shippedCampaigns.length > 0 && (
+            <section>
+              <SectionHeader title="Shipped" count={shippedCampaigns.length} />
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {shippedCampaigns.map((campaign) => (
+                  <CampaignCard
+                    key={campaign.id}
+                    campaign={campaign}
+                    recentActivity={getRecentActivity(campaign.slug)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Agent Pulse */}
           <section>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-sm font-semibold text-text uppercase tracking-wider">Agents</h2>
-            </div>
+            <SectionHeader title="Agent Pulse" />
             {loading ? (
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {[1, 2, 3].map((i) => (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {[1, 2, 3, 4, 5].map((i) => (
                   <div
                     key={i}
-                    className="flex-shrink-0 w-48 h-24 bg-surface rounded-lg border border-border animate-pulse"
+                    className="h-28 animate-pulse rounded-xl border border-border bg-surface"
                   />
                 ))}
               </div>
@@ -183,27 +199,18 @@ export default function App() {
             )}
           </section>
 
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-sm font-semibold text-text uppercase tracking-wider">
-                Live Feed
-              </h2>
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  realtimeStatus === 'connected' ? 'bg-success animate-pulse' : 'bg-muted'
-                }`}
-              />
-            </div>
-
-            <div className="bg-surface rounded-lg border border-border overflow-hidden">
+          {/* Live Feed */}
+          <section className="pb-8">
+            <SectionHeader title="Live Feed" live={realtimeStatus === 'connected'} />
+            <div className="overflow-hidden rounded-xl border border-border bg-surface shadow-lg shadow-black/20">
               {loading ? (
-                <div className="p-4 flex flex-col gap-3">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="h-5 bg-surface-2 rounded animate-pulse" />
+                <div className="flex flex-col gap-3 p-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="h-5 animate-pulse rounded bg-surface-2" />
                   ))}
                 </div>
               ) : (
-                <div className="px-3 py-1 max-h-[480px] overflow-y-auto">
+                <div className="max-h-[520px] overflow-y-auto">
                   <LiveFeed entries={activityLog} />
                 </div>
               )}

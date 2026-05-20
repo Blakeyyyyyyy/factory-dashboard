@@ -3,30 +3,64 @@ interface Props {
   className?: string
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  active: 'bg-accent/20 text-accent border border-accent/30',
-  done: 'bg-success/20 text-success border border-success/30',
-  live: 'bg-success/20 text-success border border-success/30',
-  paused: 'bg-warning/20 text-warning border border-warning/30',
-  blocked: 'bg-danger/20 text-danger border border-danger/30',
+interface PillStyle {
+  classes: string
+  label: string
+  dot: string
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  active: 'Active',
-  done: 'Done',
-  live: 'Live',
-  paused: 'Paused',
-  blocked: 'Blocked',
+const STATUS_STYLES: Record<string, PillStyle> = {
+  active: {
+    classes: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
+    label: 'Building',
+    dot: 'bg-indigo-400',
+  },
+  live: {
+    classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    label: 'Live',
+    dot: 'bg-emerald-400',
+  },
+  done: {
+    classes: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    label: 'Done',
+    dot: 'bg-emerald-400',
+  },
+  paused: {
+    classes: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    label: 'Paused',
+    dot: 'bg-amber-400',
+  },
+  blocked: {
+    classes: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+    label: 'Blocked',
+    dot: 'bg-rose-400',
+  },
+}
+
+const FALLBACK: PillStyle = {
+  classes: 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+  label: 'Unknown',
+  dot: 'bg-zinc-400',
 }
 
 export function StatusPill({ status, className = '' }: Props) {
   const key = status.toLowerCase()
-  const styles = STATUS_STYLES[key] ?? 'bg-surface-2 text-muted border border-border'
-  const label = STATUS_LABELS[key] ?? status
+  const style = STATUS_STYLES[key] ?? { ...FALLBACK, label: status }
+  const live = key === 'live'
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide ${styles} ${className}`}>
-      {label}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${style.classes} ${className}`}
+    >
+      <span className="relative flex h-1.5 w-1.5">
+        {live && (
+          <span
+            className={`absolute inline-flex h-full w-full animate-ping rounded-full ${style.dot} opacity-60`}
+          />
+        )}
+        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${style.dot}`} />
+      </span>
+      {style.label}
     </span>
   )
 }

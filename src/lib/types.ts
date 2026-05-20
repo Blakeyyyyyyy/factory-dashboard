@@ -20,8 +20,16 @@ export interface ActivityEntry {
   app_slug: string
   agent_name: string
   action: string
-  cost_usd: number
+  // Supabase numeric columns arrive as strings over the wire.
+  cost_usd: number | string
   created_at: string
+}
+
+// Coerce a possibly-string numeric column to a number.
+export function asNumber(value: number | string | null | undefined): number {
+  if (value == null) return 0
+  const n = typeof value === 'number' ? value : parseFloat(value)
+  return Number.isFinite(n) ? n : 0
 }
 
 export interface Approval {
